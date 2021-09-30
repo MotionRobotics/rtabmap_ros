@@ -111,6 +111,8 @@ Visualization Manager:
           Value: true
         odom:
           Value: true
+        robot_base_link:
+          Value: true
       Marker Alpha: 1
       Marker Scale: 1
       Name: TF
@@ -135,6 +137,8 @@ Visualization Manager:
               camera_gyro_frame:
                 camera_imu_optical_frame:
                   {}
+              robot_base_link:
+                {}
       Update Interval: 0
       Value: true
     - Class: rviz/Image
@@ -167,6 +171,7 @@ Visualization Manager:
       Color Transformer: RGB8
       Download graph: false
       Download map: false
+      Download namespace: rtabmap
       Enabled: false
       Filter ceiling (m): 0
       Filter floor (m): 0
@@ -312,28 +317,29 @@ Visualization Manager:
       Unreliable: false
       Use Timestamp: false
       Value: true
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz/Path
-      Color: 25; 255; 0
+    - Class: rviz/Marker
       Enabled: true
-      Head Diameter: 0.30000001192092896
-      Head Length: 0.20000000298023224
-      Length: 0.30000001192092896
-      Line Style: Lines
-      Line Width: 0.029999999329447746
-      Name: Path
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: None
+      Marker Topic: /move_base/TebLocalPlannerROS/teb_markers
+      Name: Marker
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Alpha: 1
+      Arrow Length: 0.30000001192092896
+      Axes Length: 0.30000001192092896
+      Axes Radius: 0.009999999776482582
+      Class: rviz/PoseArray
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.07000000029802322
+      Head Radius: 0.029999999329447746
+      Name: PoseArray
       Queue Size: 10
-      Radius: 0.029999999329447746
-      Shaft Diameter: 0.10000000149011612
-      Shaft Length: 0.10000000149011612
-      Topic: /move_base/TrajectoryPlannerROS/local_plan
+      Shaft Length: 0.23000000417232513
+      Shaft Radius: 0.009999999776482582
+      Shape: Arrow (Flat)
+      Topic: /move_base/TebLocalPlannerROS/teb_poses
       Unreliable: false
       Value: true
   Enabled: true
@@ -360,7 +366,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 5.002315521240234
+      Distance: 19.72014808654785
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -376,9 +382,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.4297964572906494
+      Pitch: 1.3747965097427368
       Target Frame: base_link
-      Yaw: 3.0831820964813232
+      Yaw: 3.248183012008667
     Saved: ~
 Window Geometry:
   Displays:
