@@ -301,7 +301,12 @@ void OdometryROS::onInit()
 		std::string vStr;
 		if(pnh.getParam(iter->first, vStr))
 		{
-			if(iter->second.first && parameters_.find(iter->second.second) != parameters_.end())
+			if(!iter->second.second.empty() && parameters_.find(iter->second.second)!=parameters_.end())
+			{
+				NODELET_WARN("Rtabmap: Parameter name changed: \"%s\" -> \"%s\". The new parameter is already used with value \"%s\", ignoring the old one with value \"%s\".",
+						iter->first.c_str(), iter->second.second.c_str(), parameters_.find(iter->second.second)->second.c_str(), vStr.c_str());
+			}
+			else if(iter->second.first && parameters_.find(iter->second.second) != parameters_.end())
 			{
 				// can be migrated
 				parameters_.at(iter->second.second)= vStr;
@@ -859,22 +864,27 @@ void OdometryROS::processData(SensorData & data, const std_msgs::Header & header
 	if(odomInfoPub_.getNumSubscribers() || odomInfoLitePub_.getNumSubscribers())
 	{
 		rtabmap_ros::OdomInfo infoMsg;
-		odomInfoToROS(info, infoMsg);
+		odomInfoToROS(info, infoMsg, odomInfoPub_.getNumSubscribers()==0);
 		infoMsg.header.stamp = header.stamp; // use corresponding time stamp to image
 		infoMsg.header.frame_id = odomFrameId_;
-		odomInfoPub_.publish(infoMsg);
+		if(odomInfoPub_.getNumSubscribers()>0) {
+			odomInfoPub_.publish(infoMsg);
+		}
 
-		infoMsg.wordInliers.clear();
-		infoMsg.wordMatches.clear();
-		infoMsg.wordsKeys.clear();
-		infoMsg.wordsValues.clear();
-		infoMsg.refCorners.clear();
-		infoMsg.newCorners.clear();
-		infoMsg.cornerInliers.clear();
-		infoMsg.localMapKeys.clear();
-		infoMsg.localMapValues.clear();
-		infoMsg.localScanMap.clear();
-		odomInfoLitePub_.publish(infoMsg);
+		if(odomInfoLitePub_.getNumSubscribers()>0)
+		{
+			infoMsg.wordInliers.clear();
+			infoMsg.wordMatches.clear();
+			infoMsg.wordsKeys.clear();
+			infoMsg.wordsValues.clear();
+			infoMsg.refCorners.clear();
+			infoMsg.newCorners.clear();
+			infoMsg.cornerInliers.clear();
+			infoMsg.localMapKeys.clear();
+			infoMsg.localMapValues.clear();
+			infoMsg.localScanMap = sensor_msgs::PointCloud2();
+			odomInfoLitePub_.publish(infoMsg);
+		}
 	}
 
 	if(!data.imageRaw().empty() && odomRgbdImagePub_.getNumSubscribers())

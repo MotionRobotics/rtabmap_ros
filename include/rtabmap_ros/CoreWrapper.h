@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <std_msgs/Empty.h>
 #include <std_msgs/Int32.h>
+#include "std_msgs/Int32MultiArray.h"
 #include <sensor_msgs/NavSatFix.h>
 #include <nav_msgs/GetMap.h>
 #include <nav_msgs/GetPlan.h>
@@ -75,6 +76,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifdef WITH_APRILTAG_ROS
 #include <apriltag_ros/AprilTagDetectionArray.h>
+#endif
+
+//#define WITH_FIDUCIAL_MSGS
+#ifdef WITH_FIDUCIAL_MSGS
+#include <fiducial_msgs/FiducialTransformArray.h>
 #endif
 
 #include <actionlib/client/simple_action_client.h>
@@ -164,7 +170,11 @@ private:
 #ifdef WITH_APRILTAG_ROS
 	void tagDetectionsAsyncCallback(const apriltag_ros::AprilTagDetectionArray & tagDetections);
 #endif
+#ifdef WITH_FIDUCIAL_MSGS
+	void fiducialDetectionsAsyncCallback(const fiducial_msgs::FiducialTransformArray & fiducialDetections);
+#endif
 	void imuAsyncCallback(const sensor_msgs::ImuConstPtr & tagDetections);
+	void republishNodeDataCallback(const std_msgs::Int32MultiArray::ConstPtr& msg);
 	void interOdomCallback(const nav_msgs::OdometryConstPtr & msg);
 	void interOdomInfoCallback(const nav_msgs::OdometryConstPtr & msg1, const rtabmap_ros::OdomInfoConstPtr & msg2);
 
@@ -191,8 +201,6 @@ private:
 	std::map<int, rtabmap::Transform> filterNodesToAssemble(
 			const std::map<int, rtabmap::Transform> & nodes,
 			const rtabmap::Transform & currentPose);
-
-	void republishMaps();
 
 	bool updateRtabmapCallback(std_srvs::Empty::Request&, std_srvs::Empty::Response&);
 	bool resetRtabmapCallback(std_srvs::Empty::Request&, std_srvs::Empty::Response&);
@@ -243,6 +251,7 @@ private:
 	void goalFeedbackCb(const move_base_msgs::MoveBaseFeedbackConstPtr& feedback);
 	void publishLocalPath(const ros::Time & stamp);
 	void publishGlobalPath(const ros::Time & stamp);
+	void republishMaps();
 
 private:
 	rtabmap::Rtabmap rtabmap_;
@@ -290,6 +299,7 @@ private:
 	ros::Publisher infoPub_;
 	ros::Publisher mapDataPub_;
 	ros::Publisher mapGraphPub_;
+	ros::Publisher odomCachePub_;
 	ros::Publisher landmarksPub_;
 	ros::Publisher labelsPub_;
 	ros::Publisher mapPathPub_;
@@ -367,10 +377,12 @@ private:
 	ros::Subscriber gpsFixAsyncSub_;
 	rtabmap::GPS gps_;
 	ros::Subscriber tagDetectionsSub_;
+	ros::Subscriber fiducialTransfromsSub_;
 	std::map<int, std::pair<geometry_msgs::PoseWithCovarianceStamped, float> > tags_; // id, <pose, size>
 	ros::Subscriber imuSub_;
 	std::map<double, rtabmap::Transform> imus_;
 	std::string imuFrameId_;
+	ros::Subscriber republishNodeDataSub_;
 
 	ros::Subscriber interOdomSub_;
 	std::list<std::pair<nav_msgs::Odometry, rtabmap_ros::OdomInfo> > interOdoms_;
@@ -388,6 +400,8 @@ private:
 	bool alreadyRectifiedImages_;
 	bool twoDMapping_;
 	ros::Time previousStamp_;
+	std::set<int> nodesToRepublish_;
+	int maxNodesRepublished_;
 };
 
 }

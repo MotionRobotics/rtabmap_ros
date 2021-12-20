@@ -507,6 +507,13 @@ void infoFromROS(const rtabmap_ros::Info & info, rtabmap::Statistics & stat)
 	stat.setLocalPath(info.localPath);
 	stat.setCurrentGoalId(info.currentGoalId);
 
+	std::map<int, rtabmap::Transform> poses;
+	std::multimap<int, rtabmap::Link> constraints;
+	rtabmap::Transform t;
+	mapGraphFromROS(info.odom_cache, poses, constraints, t);
+	stat.setOdomCachePoses(poses);
+	stat.setOdomCacheConstraints(constraints);
+
 	// Statistics data
 	for(unsigned int i=0; i<info.statsKeys.size() && i<info.statsValues.size(); i++)
 	{
@@ -542,6 +549,7 @@ void infoToROS(const rtabmap::Statistics & stats, rtabmap_ros::Info & info)
 		info.labelsValues = uValues(stats.labels());
 		info.localPath = stats.localPath();
 		info.currentGoalId = stats.currentGoalId();
+		mapGraphToROS(stats.odomCachePoses(), stats.odomCacheConstraints(), stats.mapCorrection(), info.odom_cache);
 
 		// Statistics data
 		info.statsKeys = uKeys(stats.data());
@@ -1067,7 +1075,7 @@ rtabmap::Signature nodeDataFromROS(const rtabmap_ros::NodeData & msg)
 	{
 		ROS_ERROR("Word IDs and 3D points should be the same size (%d, %d)!", (int)msg.wordIds.size(), (int)msg.wordPts.size());
 	}
-	if(wordsDescriptors.rows != (int)msg.wordIds.size())
+	if(!wordsDescriptors.empty() && wordsDescriptors.rows != (int)msg.wordIds.size())
 	{
 		ROS_ERROR("Word IDs and descriptors should be the same size (%d, %d)!", (int)msg.wordIds.size(), wordsDescriptors.rows);
 		wordsDescriptors = cv::Mat();
@@ -1439,6 +1447,14 @@ rtabmap::OdometryInfo odomInfoFromROS(const rtabmap_ros::OdomInfo & msg, bool ig
 	info.localBundleOutliers = msg.localBundleOutliers;
 	info.localBundleConstraints = msg.localBundleConstraints;
 	info.localBundleTime = msg.localBundleTime;
+	UASSERT(msg.localBundleModels.size() == msg.localBundleIds.size());
+	UASSERT(msg.localBundleModels.size() == msg.localBundleModelTransforms.size());
+	UASSERT(msg.localBundleModels.size() == msg.localBundlePoses.size());
+	for(size_t i=0; i<msg.localBundleIds.size(); ++i)
+	{
+		info.localBundleModels.insert(std::make_pair(msg.localBundleIds[i], cameraModelFromROS(msg.localBundleModels[i], transformFromGeometryMsg(msg.localBundleModelTransforms[i]))));
+		info.localBundlePoses.insert(std::make_pair(msg.localBundleIds[i], transformFromPoseMsg(msg.localBundlePoses[i])));
+	}
 	info.keyFrameAdded = msg.keyFrameAdded;
 	info.timeEstimation = msg.timeEstimation;
 	info.timeParticleFiltering =  msg.timeParticleFiltering;
@@ -1477,12 +1493,14 @@ rtabmap::OdometryInfo odomInfoFromROS(const rtabmap_ros::OdomInfo & msg, bool ig
 			info.localMap.insert(std::make_pair(msg.localMapKeys[i], point3fFromROS(msg.localMapValues[i])));
 		}
 
-		info.localScanMap = rtabmap::LaserScan(rtabmap::uncompressData(msg.localScanMap), 0, 0, (rtabmap::LaserScan::Format)msg.localScanMapFormat);
+		pcl::PCLPointCloud2 cloud;
+		pcl_conversions::toPCL(msg.localScanMap, cloud);
+		info.localScanMap = rtabmap::util3d::laserScanFromPointCloud(cloud);
 	}
 	return info;
 }
 
-void odomInfoToROS(const rtabmap::OdometryInfo & info, rtabmap_ros::OdomInfo & msg)
+void odomInfoToROS(const rtabmap::OdometryInfo & info, rtabmap_ros::OdomInfo & msg, bool ignoreData)
 {
 	msg.lost = info.lost;
 	msg.matches = info.reg.matches;
@@ -1504,6 +1522,23 @@ void odomInfoToROS(const rtabmap::OdometryInfo & info, rtabmap_ros::OdomInfo & m
 	msg.localBundleOutliers = info.localBundleOutliers;
 	msg.localBundleConstraints = info.localBundleConstraints;
 	msg.localBundleTime = info.localBundleTime;
+	UASSERT(info.localBundleModels.size() == info.localBundlePoses.size());
+	for(std::map<int, rtabmap::CameraModel>::const_iterator iter=info.localBundleModels.begin();
+		iter!=info.localBundleModels.end();
+		++iter)
+	{
+		msg.localBundleIds.push_back(iter->first);
+		sensor_msgs::CameraInfo camInfo;
+		cameraModelToROS(iter->second, camInfo);
+		msg.localBundleModels.push_back(camInfo);
+		geometry_msgs::Transform localT;
+		transformToGeometryMsg(iter->second.localTransform(), localT);
+		msg.localBundleModelTransforms.push_back(localT);
+		UASSERT(info.localBundlePoses.find(iter->first)!=info.localBundlePoses.end());
+		geometry_msgs::Pose pose;
+		transformToPoseMsg(info.localBundlePoses.at(iter->first), pose);
+		msg.localBundlePoses.push_back(pose);
+	}
 	msg.keyFrameAdded = info.keyFrameAdded;
 	msg.timeEstimation = info.timeEstimation;
 	msg.timeParticleFiltering =  info.timeParticleFiltering;
@@ -1516,26 +1551,28 @@ void odomInfoToROS(const rtabmap::OdometryInfo & info, rtabmap_ros::OdomInfo & m
 
 	msg.type = info.type;
 
-	msg.wordsKeys = uKeys(info.words);
-	keypointsToROS(uValues(info.words), msg.wordsValues);
-
-	msg.wordMatches = info.reg.matchesIDs;
-	msg.wordInliers = info.reg.inliersIDs;
-
-	points2fToROS(info.refCorners, msg.refCorners);
-	points2fToROS(info.newCorners, msg.newCorners);
-	msg.cornerInliers = info.cornerInliers;
-
 	transformToGeometryMsg(info.transform, msg.transform);
 	transformToGeometryMsg(info.transformFiltered, msg.transformFiltered);
 	transformToGeometryMsg(info.transformGroundTruth, msg.transformGroundTruth);
 	transformToGeometryMsg(info.guess, msg.guess);
 
-	msg.localMapKeys = uKeys(info.localMap);
-	points3fToROS(uValues(info.localMap), msg.localMapValues);
+	if(!ignoreData)
+	{
+		msg.wordsKeys = uKeys(info.words);
+		keypointsToROS(uValues(info.words), msg.wordsValues);
 
-	msg.localScanMap = rtabmap::compressData(rtabmap::util3d::transformLaserScan(info.localScanMap, info.localScanMap.localTransform()).data());
-	msg.localScanMapFormat = info.localScanMap.format();
+		msg.wordMatches = info.reg.matchesIDs;
+		msg.wordInliers = info.reg.inliersIDs;
+
+		points2fToROS(info.refCorners, msg.refCorners);
+		points2fToROS(info.newCorners, msg.newCorners);
+		msg.cornerInliers = info.cornerInliers;
+
+		msg.localMapKeys = uKeys(info.localMap);
+		points3fToROS(uValues(info.localMap), msg.localMapValues);
+
+		pcl_conversions::moveFromPCL(*rtabmap::util3d::laserScanToPointCloud2(info.localScanMap, info.localScanMap.localTransform()), msg.localScanMap);
+	}
 }
 
 cv::Mat userDataFromROS(const rtabmap_ros::UserData & dataMsg)
@@ -1962,7 +1999,7 @@ bool convertStereoMsg(
 	if(leftImageMsg->encoding.compare(sensor_msgs::image_encodings::TYPE_8UC1) == 0 ||
 	   leftImageMsg->encoding.compare(sensor_msgs::image_encodings::MONO8) == 0)
 	{
-		left = leftImageMsg->image;
+		left = leftImageMsg->image.clone();
 	}
 	else if(leftImageMsg->encoding.compare(sensor_msgs::image_encodings::MONO16) == 0)
 	{
@@ -1975,7 +2012,7 @@ bool convertStereoMsg(
 	if(rightImageMsg->encoding.compare(sensor_msgs::image_encodings::TYPE_8UC1) == 0 ||
 	   rightImageMsg->encoding.compare(sensor_msgs::image_encodings::MONO8) == 0)
 	{
-		right = rightImageMsg->image;
+		right = rightImageMsg->image.clone();
 	}
 	else
 	{
